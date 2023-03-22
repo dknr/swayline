@@ -1,54 +1,59 @@
-let i = 0;
+const format = {
+	loadAvg: (value: string) =>
+		Array.from(value.matchAll(/\d*\.\d*/g)).join(' '),
 
-const dateFormat = new Intl.DateTimeFormat("en-US", {
-	month: 'short',
-	day: 'numeric',
-});
+	unit: (suffix: string, scale: number = 1) => (value: string) =>
+		(parseInt(value) * Math.pow(10, scale)).toFixed(1) + suffix,
 
-const timeFormat = new Intl.DateTimeFormat("en-US", {
-	timeStyle: 'short',
-	hour12: false
-});
+	date: new Intl.DateTimeFormat("en-US", {
+		month: 'short',
+		day: 'numeric',
+	}).format,
+
+	time: new Intl.DateTimeFormat("en-US", {
+		timeStyle: 'short',
+		hour12: false
+	}).format,
+};
 
 const utf8d = new TextDecoder();
-const readSysctl = async (key: string) => {
+const readProcess = async (cmd: string[]) => {
 	const process = Deno.run({
-		cmd: ["sysctl", "-n", key],
+		cmd,
 		stdout: "piped",
 	});
-	const status = await process.status();
+	await process.status();
 	const output = await process.output();
-	const value = await utf8d.decode(output).trim();	
-	return value;
-}
-const readTemp = async () => {
-	const value = await readSysctl('hw.acpi.thermal.tz0.temperature');
-	const degC = parseFloat(value.trimEnd('C'));
-	return `${Math.round(degC)}C`;
-}
-const readRate = async () => {
-	const value = await readSysctl('hw.acpi.battery.rate');
-	const rate_mw = parseInt(value);
-	const rate_w = rate_mw / 1000;
-	return `${rate_w.toFixed(1)}W`;
+	return utf8d.decode(output).trim();
 }
 
-const readLoad = async () => {
-	const value = await readSysctl('vm.loadavg');
-	const loads = Array.from(value.matchAll(/\d\.\d\d/g));
-	return loads.join(' ');
+const cmd = (args: string[], format?: (value: string) => string) => async (): Promise<string> => {
+	const result = await readProcess(args);
+	return format ? format(result) : result;
 }
+
+const sysctl = (key: string, format?: (value: string) => string) =>
+	cmd(['sysctl', '-n', key], format);
+
+const load = sysctl('vm.loadavg', format.loadAvg);
+const power = sysctl('hw.acpi.battery.rate', format.unit('W', -3));
+const temp = sysctl('hw.acpi.thermal.tz0.temperature');
+const speed = sysctl('dev.cpu.0.freq', format.unit('G', -3))
+
+const date = () => format.date(new Date());
+const time = () => format.time(new Date());
+
+type LineSource = () => Promise<string> | string;
+const sources: LineSource[] = [
+	load,
+	power,
+	speed,
+	temp,
+	date,
+	time,
+];
 
 setInterval(async () => {
-	const now = new Date();
-	const date = dateFormat.format(now);
-	const time = timeFormat.format(now);
-
-	const rate = await readRate();
-	const temp = await readTemp();
-	const life = await readSysctl('hw.acpi.battery.life');
-	const load = await readLoad();
-
-	console.log(`${load} ${rate} ${temp} ${life}% ${date} ${time}`);
+	const status = await Promise.all(sources.map((source) => source()))
+	Deno.run({cmd: ['xsetroot', '-name', status.join(' ')]});
 }, 1000);
-
