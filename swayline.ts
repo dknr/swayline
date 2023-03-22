@@ -43,8 +43,49 @@ const speed = sysctl('dev.cpu.0.freq', format.unit('G', -3))
 const date = () => format.date(new Date());
 const time = () => format.time(new Date());
 
+const get = <T>(input: string) => fetch(input).then((res) => res.json() as T);
+
+// let forecast = null;
+// setInterval(() => {
+//
+// })
+
+type NwsForecast = {
+	properties: {
+		periods: Array<{
+			temperature: number;
+			temperatureUnit: string;
+			probabilityOfPrecipitation: {
+				unitCode: string;
+				value: number;
+			}
+		}>
+	}
+}
+
+const getForecast = (lon: number, lat: number) =>
+	get<any>(`https://api.weather.gov/points/${lon},${lat}`)
+		.then((point) => get<NwsForecast>(point.properties.forecast));
+
+const weather = (lon: number, lat: number) => {
+	let forecast: NwsForecast = null!;
+	setTimeout(async () => forecast = await getForecast(lon, lat));
+	setInterval(async () => {
+		forecast = await getForecast(lon, lat);
+	}, 60 * 60 * 1000);
+
+	return () => {
+		if (forecast == null) {
+			return '??F';
+		}
+		const period0 = forecast.properties.periods[0];
+		return `${period0.temperature}${period0.temperatureUnit}`;
+	}
+}
+
 type LineSource = () => Promise<string> | string;
 const sources: LineSource[] = [
+	weather(34.54,-112.47),
 	load,
 	power,
 	speed,
