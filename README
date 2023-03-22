@@ -1,0 +1,4 @@
+simple status line generator for Sway on FreeBSD
+
+installation:
+deno install --allow-run=sysctl swayline.ts
