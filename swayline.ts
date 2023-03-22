@@ -3,7 +3,7 @@ const format = {
 		Array.from(value.matchAll(/\d*\.\d*/g)).join(' '),
 
 	unit: (suffix: string, scale: number = 1) => (value: string) =>
-		(parseInt(value) * Math.pow(10, scale)).toFixed(1) + suffix,
+		(parseInt(value) * Math.pow(10, scale)).toFixed(2) + suffix,
 
 	date: new Intl.DateTimeFormat("en-US", {
 		month: 'short',
@@ -37,6 +37,7 @@ const sysctl = (key: string, format?: (value: string) => string) =>
 
 const load = sysctl('vm.loadavg', format.loadAvg);
 const power = sysctl('hw.acpi.battery.rate', format.unit('W', -3));
+const life = sysctl('hw.acpi.battery.life', (value) => value + '%'); 
 const temp = sysctl('hw.acpi.thermal.tz0.temperature');
 const speed = sysctl('dev.cpu.0.freq', format.unit('G', -3))
 
@@ -83,18 +84,27 @@ const weather = (lon: number, lat: number) => {
 	}
 }
 
+const space = () => " ";
+const bar = () => "|";
+
 type LineSource = () => Promise<string> | string;
 const sources: LineSource[] = [
+	space,
 	weather(34.54,-112.47),
+	bar,
 	load,
-	power,
 	speed,
+	bar,
+	power,
+	life,
 	temp,
+	bar,
 	date,
 	time,
 ];
 
 setInterval(async () => {
-	const status = await Promise.all(sources.map((source) => source()))
-	Deno.run({cmd: ['xsetroot', '-name', status.join(' ')]});
+	const status = (await Promise.all(sources.map((source) => source()))).join(' ');
+	Deno.run({cmd: ['xsetroot', '-name', status]});
+	console.log(status);
 }, 1000);
