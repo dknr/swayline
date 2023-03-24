@@ -103,8 +103,14 @@ const sources: LineSource[] = [
 	time,
 ];
 
+const setTask = (task: () => void, interval: number) => {
+	setTimeout(task);
+	setInterval(task, interval);
+}
+
 setInterval(async () => {
 	const status = (await Promise.all(sources.map((source) => source()))).join(' ');
 	Deno.run({cmd: ['xsetroot', '-name', status]});
 	console.log(status);
-}, 1000);
+}, 5000);
+
